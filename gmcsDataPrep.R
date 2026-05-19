@@ -27,26 +27,26 @@ defineModule(sim, list(
     defineParameter("biomassModel", "character", "Lambert2005", NA, NA,
                     desc =  paste("The model used to calculate biomass from DBH.",
                                   "Can be either 'Lambert2005' or 'Ung2008'.")),
-    defineParameter("climateVariables", "character", c("ATA" = "MAT", "CMI"), NA, NA,
-                    desc = paste("character vector of climate variables from ClimateNA used in the growth/mortality models.",
-                                 "If a model uses a variable formula that represents a deviation from a climate normal,",
-                                 "it should be indicated with a name, where the name represents the variable in the formula.",
-                                 "For example, the default climate variable and model use the anomaly of `MAT`: `ATA`.")),
+    # defineParameter("climateVariables", "character", c("ATA" = "MAT", "CMI"), NA, NA,
+    #                 desc = paste("character vector of climate variables from ClimateNA used in the growth/mortality models.",
+    #                              "If a model uses a variable formula that represents a deviation from a climate normal,",
+    #                              "it should be indicated with a name, where the name represents the variable in the formula.",
+    #                              "For example, the default climate variable and model use the anomaly of `MAT`: `ATA`.")),
     defineParameter("climateNormal", "numeric", c(1991:2020), NA, NA,
                     desc = paste("length 2 numeric denoting the first and last years to use when calculating anomaly variables.",
                                  "This date range should match the data used to estimate maxANPP and maxB, if applicable.")),
     #TODO: review this parameter once the climate normal data is avaiable for PSPs (currently only 2001-2020 via climr)
     defineParameter("doAssertion", "logical", getOption("LandR.assertions"), NA, NA,
                     desc = "assertions used to check climate data for NA values in valid pixels"),
-    defineParameter("doPlotting", "logical", TRUE, NA, NA, 
+    defineParameter("doPlotting", "logical", TRUE, NA, NA,
                     desc = paste("if true, will plot and save models")),
-    defineParameter("growthKFolds", "numeric", 5, 0, Inf, 
+    defineParameter("growthKFolds", "numeric", 5, 0, Inf,
                     desc = paste("number of K-folds applied to xgBoost climate-sensetive growth model")),
-    defineParameter("maxDBHperYear", "numeric", 1, 0, Inf, 
-                    paste("Q/C parameter dictating maximum expected increase in DBH per year for newly measured trees,", 
+    defineParameter("maxDBHperYear", "numeric", 1, 0, Inf,
+                    paste("Q/C parameter dictating maximum expected increase in DBH per year for newly measured trees,",
                           "above which measurements are treated as erroneous and removed from the dataset")),
-    defineParameter("maxIntervalPeriod", "numeric", 10, 1, Inf, 
-                    paste("the maximum length of measurement interval to allow before discarding an observation.", 
+    defineParameter("maxIntervalPeriod", "numeric", 10, 1, Inf,
+                    paste("the maximum length of measurement interval to allow before discarding an observation.",
                           "The climate is averaged between measurements, so the longer the interval, the more noise")),
     defineParameter("minDBH", "numeric", 9.7, 0, NA,
                     desc = "The minimum DBH (cm) allowed. Each province uses different criteria for monitoring trees,
@@ -107,6 +107,11 @@ defineModule(sim, list(
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
+    expectsInput(objectName = "climateVariables", objectClass = "character",# c("ATA" = "MAT", "CMI"), NA, NA,
+                    desc = paste("character vector of climate variables from ClimateNA used in the growth/mortality models.",
+                                 "If a model uses a variable formula that represents a deviation from a climate normal,",
+                                 "it should be indicated with a name, where the name represents the variable in the formula.",
+                                 "For example, the default climate variable and model use the anomaly of `MAT`: `ATA`.")),
     expectsInput(objectName = "PSPmeasure_gmcs", objectClass = "data.table", desc = "standardized tree measurements for PSPs",
                  sourceURL = "https://drive.google.com/file/d/1LmOaEtCZ6EBeIlAm6ttfLqBqQnQu4Ca7/"),
     expectsInput(objectName = "PSPplot_gmcs", objectClass = "data.table", desc = "standardized plot-level attributes for PSPs",
@@ -191,7 +196,7 @@ Init <- function(sim) {
     #this should be done before creating modelData so the factors aren't duplicated in the validation set
     sim$PSPplot_gmcs[, plotNumeric := as.numeric(as.factor(OrigPlotID1))]
 
-    
+
     # SK From 1958/1964 to 1976 breakpoint DBH was 3.6” at 4.5’ (approximately 9.2cm at 1.3m).
     #Starting in 1977 the breakpoint DBH became 7.1cm DBH at 1.3m. Approximately 2% of the half-million
     #trees in the data have a DBH which is below the breakpoint DBH, but have been retained in the data
@@ -378,7 +383,7 @@ Init <- function(sim) {
 
 prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
                           PSPmeasure, PSPplot, PSPclimData, useHeight, biomassModel,
-                          max_DBH_year, PSPperiod, minDBH_tag, minMeasures, minSize, 
+                          max_DBH_year, PSPperiod, minDBH_tag, minMeasures, minSize,
                           maxInterval, minTrees, QCaction) {
 
   #this is necessary for restartSpades to work if the error occurs in this module
@@ -402,16 +407,16 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
   PSPplot <- PSPplot[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSP_sa$OrigPlotID1,]
 
-  
-  #Filter out trees smaller than minDBH 
+
+  #Filter out trees smaller than minDBH
   message(yellow("Filtering by min. DBH"))
-  
+
   #filter out plots where the DBH tagging limit might be larger than minDBH
   cutoffTooBig <- PSPplot[minDBH > minDBH_tag]$MeasureID
   message("removing ", length(cutoffTooBig), " plots with DBH tagging limits above P(sim)$minDBH")
   PSPmeasure <- PSPmeasure[!MeasureID %in% cutoffTooBig,]
   PSPplot <- PSPplot[!MeasureID %in% cutoffTooBig,]
-  
+
   #Filter bad trees, measurements, or plots
   if (QCaction > 0) {
     message("Assessing tree number consistency across PSP measurements...")
@@ -432,7 +437,7 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
     # Apply QC level 1 if QCaction >= 1
     if (QCaction >= 1) {
       # Remove the flagged measurements and ALL later measurements in those plots
-      #the problematic measurements already include subsequent measurements following 100% regen 
+      #the problematic measurements already include subsequent measurements following 100% regen
       flaggedMeas <- PSPmeasure[MeasureID %in% problematicMeasurements,]
       PSPmeasure <- PSPmeasure[!MeasureID %in% problematicMeasurements,]
     }
@@ -489,10 +494,10 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
   } else {
     message("QCaction = 0: skipping tree number consistency assessment.")
   }
-  
+
   #remove trees where DBH falls below the standardized parameter minDBH_tag
   PSPmeasure <- PSPmeasure[DBH >= minDBH_tag,]
-  
+
   ## might as well drop species with no biomass match
 
   ## `length(PSPclimData)/length(PSP_sa)` should always yield a whole number.
@@ -663,7 +668,7 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
   tooLong <- PSPmodelData[periodLength > maxInterval, .N, .(OrigPlotID1, year)]
   message("removing ", nrow(tooLong), " measurements for exceeding max interval period of ", maxInterval, " years")
   PSPmodelData <- PSPmodelData[periodLength <= maxInterval,]
-  
+
   #calculate biomass as the sum of biomass by species within a plot,
   # and scale growth by biomass
   PSPmodelData[, standBiomass := sum(biomass), .(OrigPlotID1, period)]
@@ -706,17 +711,17 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
     #it should be the censusLength + baseSA,
     recruitment_extrapolated <- copy(recruitment)
     currentAge <- P$MeasureYear[i + 1] - P$baseYear[i + 1] + P$baseSA[i + 1]
-    # increment <- (1 - censusLength/currentAge) this understimated DBH 
+    # increment <- (1 - censusLength/currentAge) this understimated DBH
     # recruitment_extrapolated[, DBH := dbh * increment]
     #must use current age to ensure censusLength is always smaller
     #note: dbh in this equation is the minimum dbh threshold
-    
-    #new method - calculate BAI, take 15th percentile 
-    # it should be low because it is clearly slower growing 
+
+    #new method - calculate BAI, take 15th percentile
+    # it should be low because it is clearly slower growing
     BAIs <- copy(living1[, TreeNumber, DBH])
     setnames(BAIs, "DBH", "prior_DBH")
     BAIs <- BAIs[living2[, .(TreeNumber, DBH)], on = c("TreeNumber")]
-    
+
     BAIs[, prior_basal_area_m2 := (pi * prior_DBH^2)/40000]
     BAIs[, basal_area_m2 := (pi * DBH^2)/40000]
     BAIs[, bai := (basal_area_m2 - prior_basal_area_m2)/censusLength]
@@ -730,7 +735,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
     recruitment_extrapolated[, prior_DBH := pmin(prior_DBH, dbh - 0.1)]
     #I don't know if the biomass equations allow 0 so for safety, floor is 0.1
     recruitment_extrapolated[, prior_DBH := pmax(prior_DBH, 0.1)]
-      
+
     if (any(is.na(recruitment_extrapolated$Height))) {
       useHeight = FALSE
     } else {
@@ -792,7 +797,7 @@ pspIntervals <- function(i, M, P, Clim, ClimVar, dbh) {
   changes$mortality <- 0
   dead$newGrowth <- 0
   changes <- rbind(changes, dead, recruitment, fill = TRUE) #recruitment will be zero here
-  
+
   #fill NA as zero - regen has no mortality, dead has no growth
   changes[, c("newGrowth", "biomass", "mortality") := lapply(.SD, FUN = nafill, fill = 0),
           .SDcols = c("newGrowth", "biomass", "mortality")]
