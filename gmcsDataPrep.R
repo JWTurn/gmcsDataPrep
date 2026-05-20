@@ -107,7 +107,7 @@ defineModule(sim, list(
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = "climateVariables", objectClass = "character",# c("ATA" = "MAT", "CMI"), NA, NA,
+    expectsInput(objectName = "climateVariablesForGMCS", objectClass =  'vector',# c("ATA" = "MAT", "CMI"), NA, NA,
                     desc = paste("character vector of climate variables from ClimateNA used in the growth/mortality models.",
                                  "If a model uses a variable formula that represents a deviation from a climate normal,",
                                  "it should be indicated with a name, where the name represents the variable in the formula.",
@@ -202,7 +202,8 @@ Init <- function(sim) {
     #trees in the data have a DBH which is below the breakpoint DBH, but have been retained in the data
     #as they may represent remeasurements of previously tagged trees, or dead trees for which bark shedding has reduced
     #the over-bark diameter Ontario = 2.5 cm (after 1991), Alberta = 7.3, SK = 7.1, BC = 4, and NFI = 9, NB, QC.
-    sim$PSPmodelData <- prepModelData(
+
+     sim$PSPmodelData <- prepModelData(
       climateVariables = sim$climateVariablesForGMCS,
       studyAreaPSP = sim$studyAreaPSP,
       PSPgis = sim$PSPgis_gmcs,
@@ -589,6 +590,7 @@ prepModelData <- function(climateVariables, climateNormal, studyAreaPSP, PSPgis,
                  " PSPs with min. ", minMeasures, " repeat measures"))
 
   tempVariableNames <- unname(climateVariables)
+
   #data.table will assign the subset columns to the variable name, which is problematic if some are NULL
   PSPclimData <- PSPclimData[OrigPlotID1 %in% PSPmeasure$OrigPlotID1, .SD,
                              .SDcols = tempVariableNames, .(OrigPlotID1, Year)]
